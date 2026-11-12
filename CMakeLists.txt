@@ -46,31 +46,40 @@ else()
     FetchContent_MakeAvailable(ftxui)
 endif()
 
-add_executable(lapse-tui
-    tui/lapse-tui.cpp
-    src/engine.cpp)
-
-target_compile_features(lapse-tui PRIVATE cxx_std_20)
-target_include_directories(lapse-tui PRIVATE src)
-target_compile_definitions(lapse-tui PRIVATE LAPSE_TUI_VERSION="${PROJECT_VERSION}")
-target_compile_options(lapse-tui PRIVATE -Wall -Wextra)
-target_link_libraries(lapse-tui PRIVATE ftxui::component ftxui::dom ftxui::screen)
+# everything but the screen, so the tests can link it
+add_library(lapse_tui_core STATIC
+    src/config.cpp
+    src/engine.cpp
+    src/library.cpp)
+target_compile_features(lapse_tui_core PUBLIC cxx_std_20)
+target_include_directories(lapse_tui_core PUBLIC src)
+target_compile_options(lapse_tui_core PUBLIC -Wall -Wextra)
 
 find_package(Threads REQUIRED)
-target_link_libraries(lapse-tui PRIVATE Threads::Threads)
+target_link_libraries(lapse_tui_core PUBLIC Threads::Threads)
+
+if(LAPSE_TUI_SANITIZE)
+    target_compile_options(lapse_tui_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer -g)
+    target_link_options(lapse_tui_core PUBLIC -fsanitize=address,undefined)
+endif()
+
+add_executable(lapse-tui tui/lapse-tui.cpp)
+target_compile_definitions(lapse-tui PRIVATE LAPSE_TUI_VERSION="${PROJECT_VERSION}")
+target_link_libraries(lapse-tui PRIVATE lapse_tui_core ftxui::component ftxui::dom ftxui::screen)
 
 if(LAPSE_TUI_STATIC)
-    if(APPLE)
-        target_link_options(lapse-tui PRIVATE -static-libstdc++)
-    else()
+    # macOS has no static libc, and its libc++ is always there
+    if(NOT APPLE)
         target_link_options(lapse-tui PRIVATE -static)
     endif()
 endif()
 
-if(LAPSE_TUI_SANITIZE)
-    target_compile_options(lapse-tui PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)
-    target_link_options(lapse-tui PRIVATE -fsanitize=address,undefined)
-endif()
+enable_testing()
+foreach(name library)
+    add_executable(test_${name} tests/test_${name}.cpp)
+    target_link_libraries(test_${name} PRIVATE lapse_tui_core)
+    add_test(NAME ${name} COMMAND test_${name})
+endforeach()
 
 include(GNUInstallDirs)
 install(TARGETS lapse-tui RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
