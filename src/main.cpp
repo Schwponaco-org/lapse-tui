@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -114,8 +115,15 @@ int main(int argc, char* argv[]) {
 
     for (auto& d : {dir, cache_dir(), state_dir()}) make_dirs(d);
     auto mounts = read_mounts();
-    if (s.roots.empty()) s.roots = s.config.roots;
-    if (s.roots.empty()) s.roots = default_roots(std::getenv("HOME") ? std::getenv("HOME") : "/", mounts, s.config.network);
+    if (s.roots.empty()) {
+        // the same folder by two names would be indexed twice: /var and
+        // /private/var on macOS, or a home behind a symlink
+        for (auto& r : s.config.roots) {
+            std::string path = absolute(r);
+            if (!path.empty() && std::find(s.roots.begin(), s.roots.end(), path) == s.roots.end()) s.roots.push_back(path);
+        }
+    }
+    if (s.roots.empty()) s.roots = default_roots(absolute(std::getenv("HOME") ? std::getenv("HOME") : "/"), mounts, s.config.network);
     s.fences = fences(mounts, s.config.network);
     if (scan) return scan_only(s);
 
