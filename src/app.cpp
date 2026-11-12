@@ -1150,7 +1150,6 @@ class App {
             } else {
                 std::string pair = "Pairs with " + shown(L.videos[s->video].name) + ", " +
                                    (s->why == "paired by hand" ? "paired by hand" : percent(s->score) + ", " + s->why);
-                if (s->score < SURE) pair += ". c says yes, x says no, m picks another";
                 l.push_back({pair, s->score < SURE ? tint(Color::Yellow) : nothing});
             }
             std::string last = "Not synced yet";
@@ -1240,9 +1239,11 @@ class App {
 
     Element hints(int w) {
         std::vector<std::pair<std::string, std::string>> keys;
+        const Subtitle* sub = view_ == View::Library ? current_sub() : nullptr;
+        if (sub && sub->video >= 0 && sub->score < SURE) keys = {{"c", "yes"}, {"x", "no"}};
         if (view_ == View::Library)
-            keys = {{"enter", "sync"}, {"space", "mark"}, {"a", "sync all"}, {"m", "pair"}, {"/", "find"},
-                    {"f", "filter"}, {"u", "undo"}, {"s", "shift"}, {"o", "options"}, {"tab", "queue"}, {"?", "help"}, {"q", "quit"}};
+            keys.insert(keys.end(), {{"enter", "sync"}, {"space", "mark"}, {"a", "sync all"}, {"m", "pair"}, {"/", "find"},
+                    {"f", "filter"}, {"u", "undo"}, {"s", "shift"}, {"o", "options"}, {"tab", "queue"}, {"?", "help"}, {"q", "quit"}});
         else
             keys = {{"x", "cancel"}, {"X", "cancel all"}, {"C", "clear done"}, {"enter", "show"}, {"tab", "library"},
                     {"?", "help"}, {"q", "quit"}};
@@ -1300,7 +1301,7 @@ class App {
             const std::string& path = f.video ? lib_->videos[f.index].path : lib_->subs[f.index].path;
             // a release folder is named like the file in it, the one above says more
             std::string dir = dir_of(path);
-            if (lower(base_of(dir)) == lower(stem_of(base_of(path)))) dir = dir_of(dir);
+            if (lower(base_of(path)).rfind(lower(base_of(dir)) + ".", 0) == 0) dir = dir_of(dir);
             std::string folder = shown(base_of(dir));
             int name_w = inner - 8 - std::min(24, inner / 3);
             Element line = hbox({text(f.video ? " film  " : " sub   ") | dim, text(pad(squeeze(shown(base_of(path)), name_w), name_w)),

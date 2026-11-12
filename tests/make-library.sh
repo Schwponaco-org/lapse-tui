@@ -118,7 +118,8 @@ lib, count = sys.argv[1], int(sys.argv[2])
 random.seed(3)
 words = 'night river cold light house iron storm glass winter long last city road silent red black dark wild blue king'.split()
 for i in range(count):
-    title = '.'.join(random.sample(words, random.randint(1, 3))).title() + '.' + str(i)
+    tag = ''.join(chr(97 + i // 26 ** k % 26) for k in range(3))
+    title = '.'.join(random.sample(words, random.randint(1, 3))).title() + '.' + tag.title()
     year = 1950 + i % 70
     name = '%s.%d.1080p.BluRay.x264-FAKE' % (title, year)
     d = os.path.join(lib, 'Fake', name[:1], name)
