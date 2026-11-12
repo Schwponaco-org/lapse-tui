@@ -555,7 +555,11 @@ class App {
 
     void shift() {
         auto subs = targets();
-        if (subs.empty()) return;
+        if (subs.empty() || !engine_ready()) return;
+        if (!s_.engine.shift) {
+            say("This lapse has no --shift, a newer release has", true);
+            return;
+        }
         prompt("Move " + plural((long long)subs.size(), "subtitle", "subtitles") +
                    " by how many ms? Negative is earlier",
                [this, subs](const std::string& text) {

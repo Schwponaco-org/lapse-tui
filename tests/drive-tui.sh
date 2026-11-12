@@ -86,6 +86,12 @@ first_cue() {
     sed -n 2p "$1" | cut -c1-12
 }
 
+# the start of the first line in ms. lapse with Silero and with libfvad
+# hear the synthetic speech a few tens of ms apart, so this has some give
+first_ms() {
+    first_cue "$1" | awk -F'[:,]' '{ print (($1 * 60 + $2) * 60 + $3) * 1000 + $4 }'
+}
+
 echo "the library, found and paired"
 start "'$TUI' --engine '$LAPSE' '$LIB'"
 wait_for "3008 videos"
@@ -101,9 +107,10 @@ wait_for "Enter syncs its subtitles"
 
 echo "sync one, solid, with a backup"
 keys j Enter
-wait_for "solid -4200 ms"
+wait_for "solid -4"
 [ -f "$ALIEN.bak" ] || fail "no backup beside English.srt"
-[ "$(first_cue "$ALIEN")" = "00:00:02,000" ] || fail "English.srt was not moved: $(first_cue "$ALIEN")"
+moved=$(first_ms "$ALIEN")
+[ "$moved" -gt 1800 ] && [ "$moved" -lt 2200 ] || fail "English.srt was not moved: $(first_cue "$ALIEN")"
 keys Tab
 wait_for "auto/shifted, 1 part, written"
 shot queue
@@ -119,7 +126,7 @@ echo "a dry run writes nothing"
 keys d
 wait_for "DRY RUN"
 keys Enter
-wait_for "dry solid -4200 ms"
+wait_for "dry solid -4"
 [ ! -f "$ALIEN.bak" ] || fail "a dry run left a backup"
 keys d
 
@@ -147,9 +154,13 @@ shot pair
 keys Enter
 wait_for "Paired Something.Else.Entirely.srt with Heat"
 keys s
-type_text "-500"
-keys Enter
-wait_for "shifted -500 ms"
+if "$LAPSE" 2>&1 | grep -q -- --shift; then
+    type_text "-500"
+    keys Enter
+    wait_for "shifted -500 ms"
+else
+    wait_for "This lapse has no --shift"
+fi
 
 echo "options and help"
 keys o
@@ -184,7 +195,7 @@ mkdir -p "$HOME/.config/lapse-tui"
 echo "root = $LIB" > "$HOME/.config/lapse-tui/config"
 start "'$TUI' --engine '$LAPSE'"
 wait_for "3008 videos"
-wait_for "dry solid -4200 ms"
+wait_for "dry solid -4"
 
 echo "NO_COLOR"
 start "NO_COLOR=1 '$TUI' --engine '$LAPSE'"

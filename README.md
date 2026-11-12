@@ -78,7 +78,7 @@ The keys for what is under the cursor are always shown on the bottom line, and `
 | `m` | Pair by hand: pick the film for a subtitle, or a subtitle for a film. `Tab` there browses the disk |
 | `c` `x` | Say yes or no to a pair marked with `?` |
 | `u` | Put the `.bak` back |
-| `s` | Move by a number of milliseconds |
+| `s` | Move by a number of milliseconds, with a lapse newer than 2.3.3 |
 | `d` | Dry run on or off |
 | `o` | Options: mode, audio track, subtitle track, confidence, snap, dry run, backup, force |
 | `f` | Show all, what is still to do, the questions, or the films without subtitles |

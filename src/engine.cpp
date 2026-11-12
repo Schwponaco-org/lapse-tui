@@ -60,6 +60,10 @@ Engine find_engine(const std::string& configured) {
     std::istringstream formats(run_engine(path, {"--formats"}).out);
     std::string ext;
     while (formats >> ext) e.formats.insert(ext);
+
+    // with nothing to do it prints the usage, which names every option it has
+    Ran usage = run_engine(path, {});
+    e.shift = (usage.out + usage.err).find("--shift") != std::string::npos;
     return e;
 }
 

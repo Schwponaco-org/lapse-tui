@@ -26,6 +26,8 @@ struct Engine {
     std::string path;
     std::string version;
     std::set<std::string> formats;
+    // --shift came after 2.3.3
+    bool shift = false;
 };
 
 // The configured path when there is one, else lapse on PATH. Empty path when
