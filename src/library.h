@@ -56,5 +56,8 @@ struct Walk {
 // not changed since the index was saved is taken from it without reading it
 void scan(Walk& walk, const Index& cached);
 
+// reads one folder the way scan does, without the folders under it
+bool read_folder(const std::string& path, Dir& dir);
+
 bool load_index(const std::string& file, Index& out);
 bool save_index(const std::string& file, const Index& index);

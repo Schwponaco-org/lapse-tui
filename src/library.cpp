@@ -113,6 +113,13 @@ Kind kind_of(const std::string& name) {
     return Kind::Other;
 }
 
+bool read_folder(const std::string& path, Dir& dir) {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) return false;
+    dir = Dir{path, mtime_of(st), {}, {}};
+    return read_dir(path, dir);
+}
+
 void scan(Walk& walk, const Index& cached) {
     std::unordered_map<std::string, const Dir*> before;
     for (auto& d : cached) before[d.path] = &d;

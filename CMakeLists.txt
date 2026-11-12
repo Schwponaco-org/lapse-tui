@@ -52,22 +52,25 @@ add_library(lapse_tui_core STATIC
     src/engine.cpp
     src/library.cpp
     src/match.cpp
-    src/names.cpp)
+    src/names.cpp
+    src/queue.cpp
+    src/state.cpp
+    src/text.cpp)
 target_compile_features(lapse_tui_core PUBLIC cxx_std_20)
 target_include_directories(lapse_tui_core PUBLIC src)
 target_compile_options(lapse_tui_core PUBLIC -Wall -Wextra)
 
 find_package(Threads REQUIRED)
-target_link_libraries(lapse_tui_core PUBLIC Threads::Threads)
+target_link_libraries(lapse_tui_core PUBLIC Threads::Threads ftxui::screen)
 
 if(LAPSE_TUI_SANITIZE)
     target_compile_options(lapse_tui_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer -g)
     target_link_options(lapse_tui_core PUBLIC -fsanitize=address,undefined)
 endif()
 
-add_executable(lapse-tui tui/lapse-tui.cpp)
+add_executable(lapse-tui src/main.cpp src/app.cpp)
 target_compile_definitions(lapse-tui PRIVATE LAPSE_TUI_VERSION="${PROJECT_VERSION}")
-target_link_libraries(lapse-tui PRIVATE lapse_tui_core ftxui::component ftxui::dom ftxui::screen)
+target_link_libraries(lapse-tui PRIVATE lapse_tui_core ftxui::component ftxui::dom)
 
 if(LAPSE_TUI_STATIC)
     # macOS has no static libc, and its libc++ is always there
@@ -77,7 +80,7 @@ if(LAPSE_TUI_STATIC)
 endif()
 
 enable_testing()
-foreach(name library match)
+foreach(name library match queue)
     add_executable(test_${name} tests/test_${name}.cpp)
     target_link_libraries(test_${name} PRIVATE lapse_tui_core)
     add_test(NAME ${name} COMMAND test_${name})
