@@ -219,7 +219,10 @@ cat > "$WORK/slow-lapse" << EOF
 #!/bin/sh
 case "\$1" in --version|--formats|--undo) exec '$LAPSE' "\$@";; esac
 sleep 1
-exec '$LAPSE' "\$@"
+'$LAPSE' "\$@"
+code=\$?
+echo "\$code \$*" >> '$WORK/slow-lapse.log'
+exit \$code
 EOF
 chmod +x "$WORK/slow-lapse"
 start "'$TUI' --engine '$WORK/slow-lapse'"
@@ -233,7 +236,12 @@ wait_for "queued to sync"
 $T kill-server
 for _ in $(seq 100); do pgrep -f "slow-lapse" > /dev/null || break; sleep 0.1; done
 sleep 0.5
-grep -q "Show.S01E02.en.srt.solid" <(tr '\t' '.' < "$STATE") ||
+if ! grep -q "Show.S01E02.en.srt.solid" <(tr '\t' '.' < "$STATE"); then
+    echo "lapse ran:"
+    cat "$WORK/slow-lapse.log" 2> /dev/null
+    echo "and the state is:"
+    cat "$STATE"
     fail "the jobs did not finish after the hangup"
+fi
 
 echo "all good"
