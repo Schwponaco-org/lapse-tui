@@ -203,7 +203,10 @@ void many() {
     Library lib = match(index, {});
     double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     std::cerr << "matched 60001 files in " << (int)ms << " ms\n";
+#ifdef NDEBUG
+    // the time says nothing in a debug or sanitizer build
     CHECK(ms < 3000);
+#endif
     CHECK_EQ(video_of(lib, "/loose/Film.Number.123.2003.en.srt"), std::string("/lib/Film.Number.123.2003/Film.Number.123.2003.1080p.mkv"));
 }
 

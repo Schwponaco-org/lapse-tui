@@ -93,6 +93,11 @@ bool under(const std::string& path, const std::string& dir) {
                            (dir == "/" || path[dir.size()] == '/'));
 }
 
+bool exists(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0;
+}
+
 bool is_dir(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
@@ -482,7 +487,8 @@ class App {
         int added = 0, skipped = 0;
         for (auto* s : subs) {
             bool needs_video = task == Action::Sync;
-            bool no_backup = task == Action::Undo && !s->backup;
+            // the disk, not the index, which may not have caught up with the last sync
+            bool no_backup = task == Action::Undo && !exists(s->path + ".bak");
             if (busy_.count(s->path) || (needs_video && s->video < 0) || no_backup) {
                 skipped++;
                 continue;
