@@ -1,0 +1,92 @@
+# lapse-tui - a terminal interface for the LAPSE subtitle sync engine
+# Copyright (C) 2026 Rasmus Stisen Jensen (rs-jensen)
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+name: CI
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and drive (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-22.04
+            lapse: lapse-linux-amd64
+            cmake: -DCMAKE_BUILD_TYPE=Release -DLAPSE_TUI_STATIC=ON
+          - name: linux-sanitizers
+            os: ubuntu-22.04
+            lapse: lapse-linux-amd64
+            cmake: -DCMAKE_BUILD_TYPE=Debug -DLAPSE_TUI_SANITIZE=ON
+          - name: macos-arm64
+            os: macos-15
+            lapse: lapse-macos-arm64
+            cmake: -DCMAKE_BUILD_TYPE=Release
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools and what the drive needs
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y build-essential cmake ninja-build tmux espeak-ng ffmpeg
+          else
+            for pkg in cmake ninja tmux espeak-ng ffmpeg; do
+              brew list --formula "$pkg" > /dev/null 2>&1 || brew install "$pkg"
+            done
+          fi
+
+      - name: Build lapse-tui
+        run: |
+          cmake -B build -G Ninja ${{ matrix.cmake }}
+          cmake --build build
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Fetch the latest lapse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R Schwponaco-org/lapse -p "${{ matrix.lapse }}" -O lapse
+          chmod +x lapse
+          ./lapse --version
+
+      - name: Drive it in tmux at 80x24
+        env:
+          ASAN_OPTIONS: log_path=${{ runner.temp }}/sanitizer
+          UBSAN_OPTIONS: log_path=${{ runner.temp }}/sanitizer:print_stacktrace=1
+        run: |
+          tests/drive-tui.sh build/lapse-tui ./lapse
+          # inside tmux nobody sees stderr, so what the sanitizers said is in files
+          if ls "$RUNNER_TEMP"/sanitizer* > /dev/null 2>&1; then
+            cat "$RUNNER_TEMP"/sanitizer*
+            exit 1
+          fi
+
+      - name: Keep the binary
+        if: matrix.name != 'linux-sanitizers'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lapse-tui-${{ matrix.name }}
+          path: build/lapse-tui
