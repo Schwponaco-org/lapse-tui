@@ -62,7 +62,7 @@ lapse-tui --scan             # look, print what was found, and stop
 
 It draws on the alternate screen and leaves the terminal as it was. It works with a plain `TERM` such as `xterm` or `screen`, inside tmux and screen, and without a mouse. It only draws when something changes, so an idle screen sends nothing over the link. It uses the sixteen colours of your terminal's own theme, so it reads on light and dark backgrounds alike, and with `NO_COLOR` set it uses bold and dim and nothing else.
 
-Syncs run one at a time, each a `lapse` of its own. If the SSH connection drops with syncs still queued, lapse-tui keeps going without the screen until the queue is empty, saves what lapse said, and exits. This is experimental; for a long queue, start lapse-tui inside tmux or screen and detach instead.
+Syncs run one at a time, each a `lapse` of its own. If the SSH connection drops with syncs still queued, lapse-tui keeps going without the screen until the queue is empty, saves what lapse said, and exits. This is experimental, and on macOS it does not work yet: there the queue ends with the connection. For a long queue, start lapse-tui inside tmux or screen and detach instead.
 
 ## Keys
 
