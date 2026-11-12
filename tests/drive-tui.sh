@@ -27,10 +27,11 @@ SHOTS=${3:-}
 HERE=$(dirname "$(realpath "$0")")
 WORK=$(mktemp -d)
 LIB=$WORK/lib
-T="tmux -L lapse-tui-drive -f /dev/null"
+RUN=0
+T="tmux -L lapse-tui-drive-$$-$RUN -f /dev/null"
 
 cleanup() {
-    $T kill-server 2> /dev/null || true
+    for n in $(seq 0 "$RUN"); do tmux -L "lapse-tui-drive-$$-$n" kill-server 2> /dev/null || true; done
     rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -43,8 +44,11 @@ mkdir -p "$HOME"
 "$HERE/make-library.sh" "$LIB" 3000 > /dev/null
 ALIEN="$LIB/Films/Alien (1979)/English.srt"
 
+# a server of its own each time, one still on its way out cannot get in the way
 start() {
     $T kill-server 2> /dev/null || true
+    RUN=$((RUN + 1))
+    T="tmux -L lapse-tui-drive-$$-$RUN -f /dev/null"
     $T new-session -d -x 80 -y 24 "cd '$WORK' && $1"
 }
 
@@ -66,10 +70,11 @@ wait_for() {
     fail "never saw: $1"
 }
 
+# an Escape with the next key right behind it reads as Alt and that key
 keys() {
     for k in "$@"; do
         $T send-keys "$k"
-        sleep 0.1
+        if [ "$k" = Escape ]; then sleep 0.5; else sleep 0.1; fi
     done
 }
 
