@@ -231,8 +231,6 @@ class App {
     std::condition_variable mail_cv_;
     std::optional<std::pair<Index, Choices>> mail_;
 
-    // threads
-
     // runs fn on the screen's thread and draws again after it
     template <typename F>
     void post(F fn) {
@@ -327,8 +325,6 @@ class App {
         });
     }
 
-    // what comes back from the threads
-
     void set_library(std::shared_ptr<const Library> lib) {
         lib_ = std::move(lib);
         const auto& v = lib_->videos;
@@ -390,8 +386,6 @@ class App {
         state_.results[job.subtitle] = job.result;
     }
 
-    // the list
-
     bool to_do(const Subtitle& sub) {
         auto r = state_.results.find(sub.path);
         return sub.video >= 0 && (r == state_.results.end() || !finished(r->second));
@@ -452,11 +446,11 @@ class App {
         return &lib_->videos[rows_[cursor_].index];
     }
 
-    // the selection, or the subtitle under the cursor, or every one of the
-    // film under the cursor
-    std::vector<const Subtitle*> targets() {
+    // what is marked, or else the subtitle under the cursor, or every one of
+    // the film under the cursor
+    std::vector<const Subtitle*> targets(bool marked = true) {
         std::vector<const Subtitle*> out;
-        if (!selected_.empty()) {
+        if (marked && !selected_.empty()) {
             for (auto& s : lib_->subs)
                 if (selected_.count(s.path)) out.push_back(&s);
             return out;
@@ -473,8 +467,6 @@ class App {
         message_ = shown(text);
         message_bad_ = bad;
     }
-
-    // actions
 
     bool engine_ready() {
         if (!s_.engine.path.empty()) return true;
@@ -688,8 +680,6 @@ class App {
         rescan();
     }
 
-    // events
-
     bool on_event(Event e) {
         if (e == Event::Custom) return true;
         if (e.is_mouse()) return on_mouse(e);
@@ -748,7 +738,7 @@ class App {
         const Subtitle* sub = current_sub();
         const Video* video = current_video();
         if (e == Event::Character(' ')) {
-            for (auto* s : targets_here()) {
+            for (auto* s : targets(false)) {
                 if (selected_.count(s->path)) selected_.erase(s->path);
                 else selected_.insert(s->path);
             }
@@ -780,15 +770,6 @@ class App {
             return false;
         }
         return true;
-    }
-
-    // space marks what is under the cursor, a film with all of its subtitles
-    std::vector<const Subtitle*> targets_here() {
-        auto keep = std::move(selected_);
-        selected_.clear();
-        auto out = targets();
-        selected_ = std::move(keep);
-        return out;
     }
 
     bool on_queue(const Event& e) {
@@ -841,11 +822,9 @@ class App {
     }
 
     void on_overlay(const Event& e) {
+        // the browser goes back to where it was opened from instead
         if (e == Event::Escape && overlay_ != Overlay::Browse) {
-            overlay_ = overlay_ == Overlay::Find || overlay_ == Overlay::Help || overlay_ == Overlay::Confirm ||
-                               overlay_ == Overlay::Prompt || overlay_ == Overlay::Options || overlay_ == Overlay::Places
-                           ? Overlay::None
-                           : overlay_;
+            overlay_ = Overlay::None;
             return;
         }
         switch (overlay_) {
@@ -985,8 +964,6 @@ class App {
         }
         set_choice(option_row_, at);
     }
-
-    // drawing
 
     Decorator tint(Color c) {
         return s_.color ? color(c) : nothing;
@@ -1377,7 +1354,7 @@ class App {
         std::vector<std::pair<std::string, std::string>> keys = {
             {"up down j k", "move, PgUp PgDn g G for pages and ends"},
             {"enter", "sync what is marked, or the line under the cursor"},
-            {"space", "mark a subtitle, or every subtitle of a film"},
+            {"space  esc", "mark a subtitle or all of a film's, unmark them all"},
             {"a", "sync every sure pair in the list that is not done"},
             {"m", "pair by hand: pick the film or the subtitle"},
             {"c  x", "say yes or no to a pair marked with ?"},
