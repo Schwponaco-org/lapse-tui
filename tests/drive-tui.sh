@@ -43,6 +43,13 @@ mkdir -p "$HOME"
 
 "$HERE/make-library.sh" "$LIB" 3000 > /dev/null
 ALIEN="$LIB/Films/Alien (1979)/English.srt"
+if [ "$(uname)" = Darwin ]; then
+    CONFIG="$HOME/Library/Application Support/lapse-tui"
+    STATE="$CONFIG/state"
+else
+    CONFIG="$HOME/.config/lapse-tui"
+    STATE="$HOME/.local/state/lapse-tui/state"
+fi
 
 # a server of its own each time, one still on its way out cannot get in the way
 start() {
@@ -196,8 +203,8 @@ for _ in $(seq 50); do $T has-session 2> /dev/null || break; sleep 0.1; done
 ! $T has-session 2> /dev/null || fail "still running after q"
 
 echo "the next start comes from the index and the settings"
-mkdir -p "$HOME/.config/lapse-tui"
-echo "root = $LIB" > "$HOME/.config/lapse-tui/config"
+mkdir -p "$CONFIG"
+echo "root = $LIB" > "$CONFIG/config"
 start "'$TUI' --engine '$LAPSE'"
 wait_for "3008 videos"
 wait_for "dry solid -4"
@@ -226,7 +233,7 @@ wait_for "queued to sync"
 $T kill-server
 for _ in $(seq 100); do pgrep -f "slow-lapse" > /dev/null || break; sleep 0.1; done
 sleep 0.5
-grep -q "Show.S01E02.en.srt.solid" <(tr '\t' '.' < "$HOME/.local/state/lapse-tui/state") ||
+grep -q "Show.S01E02.en.srt.solid" <(tr '\t' '.' < "$STATE") ||
     fail "the jobs did not finish after the hangup"
 
 echo "all good"
