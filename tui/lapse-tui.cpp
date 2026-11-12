@@ -64,14 +64,7 @@
 #include <ftxui/screen/string.hpp>
 #include <ftxui/screen/terminal.hpp>
 
-extern "C" {
-#include <libavutil/log.h>
-}
-
-#include "cli.h"
-#include "log.h"
-#include "silero.h"
-#include "srt_parser.h"
+#include "engine.h"
 
 namespace fs = std::filesystem;
 using namespace ftxui;
@@ -493,188 +486,6 @@ Walk walk(const fs::path& root, const std::set<std::string>& readable) {
 }
 
 
-// The engine's --json line is one flat object, so this reads that and no more
-struct Json {
-    std::map<std::string, std::string> text;
-    std::map<std::string, double> number;
-    std::map<std::string, bool> flag;
-    std::map<std::string, std::vector<double>> list;
-};
-
-void put_utf8(std::string& out, uint32_t code) {
-    if (code < 0x80) {
-        out += (char)code;
-    } else if (code < 0x800) {
-        out += (char)(0xC0 | (code >> 6));
-        out += (char)(0x80 | (code & 0x3F));
-    } else {
-        out += (char)(0xE0 | (code >> 12));
-        out += (char)(0x80 | ((code >> 6) & 0x3F));
-        out += (char)(0x80 | (code & 0x3F));
-    }
-}
-
-bool read_json(const std::string& all, Json& out) {
-    size_t last = all.find_last_not_of(" \t\r\n");
-    if (last == std::string::npos) return false;
-    size_t first = all.rfind('\n', last);
-    first = first == std::string::npos ? 0 : first + 1;
-    const std::string s = all.substr(first, last - first + 1);
-    size_t i = 0;
-
-    auto skip = [&] {
-        while (i < s.size() && std::isspace((unsigned char)s[i])) i++;
-    };
-    auto quoted = [&](std::string& got) {
-        if (i >= s.size() || s[i] != '"') return false;
-        i++;
-        while (i < s.size() && s[i] != '"') {
-            if (s[i] != '\\' || i + 1 >= s.size()) {
-                got += s[i++];
-                continue;
-            }
-            char e = s[i + 1];
-            i += 2;
-            if (e == 'n') got += '\n';
-            else if (e == 't') got += '\t';
-            else if (e == 'u' && i + 4 <= s.size()) {
-                put_utf8(got, (uint32_t)std::strtoul(s.substr(i, 4).c_str(), nullptr, 16));
-                i += 4;
-            } else got += e;
-        }
-        if (i >= s.size()) return false;
-        i++;
-        return true;
-    };
-    auto number = [&](double& got) {
-        const char* from = s.c_str() + i;
-        char* stop = nullptr;
-        got = std::strtod(from, &stop);
-        if (stop == from) return false;
-        i += (size_t)(stop - from);
-        return true;
-    };
-
-    skip();
-    if (i >= s.size() || s[i] != '{') return false;
-    i++;
-    for (;;) {
-        skip();
-        if (i < s.size() && s[i] == '}') return true;
-        std::string key;
-        if (!quoted(key)) return false;
-        skip();
-        if (i >= s.size() || s[i] != ':') return false;
-        i++;
-        skip();
-        if (i >= s.size()) return false;
-        if (s[i] == '"') {
-            std::string value;
-            if (!quoted(value)) return false;
-            out.text[key] = value;
-        } else if (s.compare(i, 4, "true") == 0) {
-            out.flag[key] = true;
-            i += 4;
-        } else if (s.compare(i, 5, "false") == 0) {
-            out.flag[key] = false;
-            i += 5;
-        } else if (s.compare(i, 4, "null") == 0) {
-            i += 4;
-        } else if (s[i] == '[') {
-            i++;
-            std::vector<double> values;
-            for (;;) {
-                skip();
-                if (i < s.size() && s[i] == ']') {
-                    i++;
-                    break;
-                }
-                double v;
-                if (!number(v)) return false;
-                values.push_back(v);
-                skip();
-                if (i < s.size() && s[i] == ',') i++;
-            }
-            out.list[key] = values;
-        } else {
-            double v;
-            if (!number(v)) return false;
-            out.number[key] = v;
-        }
-        skip();
-        if (i < s.size() && s[i] == ',') {
-            i++;
-            continue;
-        }
-        return i < s.size() && s[i] == '}';
-    }
-}
-
-
-// Catches what the engine says on std::cerr while it works for us, a line at
-// a time. Progress comes as "Listening to the audio 50%" ending in \r on a
-// terminal, so \r ends a line as well as \n
-class Capture : public std::streambuf {
-  public:
-    using Heard = std::function<void(const std::string& line, bool whole)>;
-
-    explicit Capture(Heard heard) : heard_(std::move(heard)) {}
-
-    void finish() {
-        std::lock_guard<std::mutex> hold(lock_);
-        end_line();
-    }
-
-  protected:
-    int overflow(int c) override {
-        if (c == traits_type::eof()) return traits_type::not_eof(c);
-        char ch = (char)c;
-        take(&ch, 1);
-        return c;
-    }
-
-    std::streamsize xsputn(const char* s, std::streamsize n) override {
-        take(s, n);
-        return n;
-    }
-
-  private:
-    void take(const char* s, std::streamsize n) {
-        std::lock_guard<std::mutex> hold(lock_);
-        for (std::streamsize i = 0; i < n; i++) {
-            if (s[i] == '\n' || s[i] == '\r') end_line();
-            else pending_ += s[i];
-        }
-        // a progress line is not finished until the next one comes along, so
-        // the gauge gets to see it before then
-        if (!pending_.empty()) heard_(pending_, false);
-    }
-
-    void end_line() {
-        if (pending_.empty()) return;
-        heard_(pending_, true);
-        pending_.clear();
-    }
-
-    Heard heard_;
-    std::mutex lock_;
-    std::string pending_;
-};
-
-std::atomic<Capture*> listening{nullptr};
-
-// FFmpeg writes its warnings straight to stderr, which is the screen here,
-// so they go to the log of the file they are about
-void ffmpeg_said(void* avcl, int level, const char* fmt, va_list args) {
-    if (level > av_log_get_level()) return;
-    Capture* to = listening.load();
-    if (!to) return;
-    thread_local int prefix = 1;
-    char line[1024];
-    av_log_format_line2(avcl, level, fmt, args, line, sizeof(line), &prefix);
-    to->sputn(line, (std::streamsize)std::strlen(line));
-}
-
 bool progress_line(const std::string& line, std::string& step, int& percent) {
     size_t space = line.rfind(' ');
     if (space == std::string::npos || space == 0) return false;
@@ -816,8 +627,8 @@ std::string short_result(const Outcome& o) {
 
 class Tui {
   public:
-    Tui(fs::path root, std::set<std::string> readable, ScreenInteractive& screen)
-        : root_(std::move(root)), readable_(std::move(readable)), screen_(screen) {}
+    Tui(std::string engine, fs::path root, std::set<std::string> readable, ScreenInteractive& screen)
+        : engine_(std::move(engine)), root_(std::move(root)), readable_(std::move(readable)), screen_(screen) {}
 
     Component component() {
         auto view = Renderer([this] { return render(); });
@@ -833,6 +644,7 @@ class Tui {
 
     // after the screen has gone, returns what main should
     int finish() {
+        stopping_ = true;
         ticking_ = false;
         ticker_.join();
 
@@ -864,12 +676,14 @@ class Tui {
 
         worker_.join();
         if (scanner_.joinable()) scanner_.join();
-        silero_close();
         if (!summary.empty()) std::cout << summary << '\n';
         return 0;
     }
 
   private:
+    std::string engine_;
+    std::atomic<bool> stopping_{false};
+
     // Everything from here to the next comment is shared with the worker and
     // the scanner, and only touched with lock_ held
     std::mutex lock_;
@@ -1316,43 +1130,23 @@ class Tui {
     // runs the engine with its stderr and its answer caught, returns the answer
     std::string perform(const Job& job, int& code) {
         const Pair& p = *job.pair;
-        std::vector<std::string> args = {"lapse"};
+        std::vector<std::string> args;
         if (job.kind == Kind::Undo) {
             args.insert(args.end(), {"--undo", p.subtitle_path});
         } else {
             if (job.kind == Kind::Shift) args.insert(args.end(), {"--shift", job.shift, p.subtitle_path});
             else args.insert(args.end(), {p.video_path, p.subtitle_path, job.options.mode});
-            args.insert(args.end(), {"--json", "--progress"});
+            args.push_back("--json");
             if (job.options.dry) args.push_back("--dry-run");
             if (job.options.force && job.kind == Kind::Sync) args.push_back("--force");
             if (job.options.no_backup) args.push_back("--no-backup");
         }
-        std::vector<const char*> argv;
-        for (auto& a : args) argv.push_back(a.c_str());
-
-        PairRef pair = job.pair;
-        Capture capture([this, pair](const std::string& line, bool whole) { heard(pair, line, whole); });
-        std::ostringstream answer;
-        std::streambuf* cerr_was = std::cerr.rdbuf(&capture);
-        std::streambuf* clog_was = std::clog.rdbuf(&capture);
-        answer_to(&answer);
-        listening = &capture;
-
-        code = 1;
-        try {
-            code = run((int)argv.size(), argv.data());
-        } catch (const std::exception& e) {
-            std::cerr << e.what() << '\n';
-        } catch (...) {
-            std::cerr << "The engine stopped on something it did not expect\n";
-        }
-
-        capture.finish();
-        listening = nullptr;
-        answer_to(nullptr);
-        std::cerr.rdbuf(cerr_was);
-        std::clog.rdbuf(clog_was);
-        return answer.str();
+        Ran ran = run_engine(engine_, args, &stopping_);
+        code = ran.code;
+        std::istringstream said(ran.err);
+        std::string line;
+        while (std::getline(said, line)) heard(job.pair, line, true);
+        return ran.out;
     }
 
     void heard(const PairRef& pair, const std::string& text, bool whole) {
@@ -1877,7 +1671,7 @@ int main(int argc, const char* argv[]) {
             return 0;
         }
         if (arg == "--version") {
-            std::cout << LAPSE_VERSION << '\n';
+            std::cout << LAPSE_TUI_VERSION << '\n';
             return 0;
         }
         if ((arg.size() > 1 && arg[0] == '-') || !folder.empty()) {
@@ -1901,13 +1695,16 @@ int main(int argc, const char* argv[]) {
         return 1;
     }
 
-    std::set<std::string> readable(SUBTITLE_FORMATS.begin(), SUBTITLE_FORMATS.end());
-    av_log_set_callback(ffmpeg_said);
+    Engine engine = find_engine(std::getenv("LAPSE") ? std::getenv("LAPSE") : "");
+    if (engine.path.empty()) {
+        std::cerr << "lapse-tui runs the lapse binary and found none on PATH. Set LAPSE to its path\n";
+        return 1;
+    }
 
     auto screen = ScreenInteractive::Fullscreen();
     screen.TrackMouse(false);
     screen.ForceHandleCtrlC(false);
-    Tui tui(root, readable, screen);
+    Tui tui(engine.path, root, engine.formats, screen);
     tui.start();
     screen.Loop(tui.component());
     return tui.finish();
