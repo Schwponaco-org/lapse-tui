@@ -50,7 +50,9 @@ endif()
 add_library(lapse_tui_core STATIC
     src/config.cpp
     src/engine.cpp
-    src/library.cpp)
+    src/library.cpp
+    src/match.cpp
+    src/names.cpp)
 target_compile_features(lapse_tui_core PUBLIC cxx_std_20)
 target_include_directories(lapse_tui_core PUBLIC src)
 target_compile_options(lapse_tui_core PUBLIC -Wall -Wextra)
@@ -75,7 +77,7 @@ if(LAPSE_TUI_STATIC)
 endif()
 
 enable_testing()
-foreach(name library)
+foreach(name library match)
     add_executable(test_${name} tests/test_${name}.cpp)
     target_link_libraries(test_${name} PRIVATE lapse_tui_core)
     add_test(NAME ${name} COMMAND test_${name})
